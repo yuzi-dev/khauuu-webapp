@@ -47,13 +47,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to fetch followers' }, { status: 500 });
     }
 
+    // Get the current user's following list to determine follow status
+    const { data: currentUserFollowing } = await supabase
+      .from('follows')
+      .select('followed_user_id')
+      .eq('follower_user_id', user.id)
+      .eq('status', 'accepted');
+
+    const followingSet = new Set(currentUserFollowing?.map(f => f.followed_user_id) || []);
+
     // Transform the data to match expected format
     const transformedFollowers = followers?.map((follow: any) => ({
       user_id: follow.profiles?.user_id,
       username: follow.profiles?.username,
       full_name: follow.profiles?.full_name,
       avatar_url: follow.profiles?.profile_image_url,
-      followed_at: follow.created_at
+      followed_at: follow.created_at,
+      is_following: followingSet.has(follow.profiles?.user_id)
     })) || [];
 
     return NextResponse.json({ followers: transformedFollowers });

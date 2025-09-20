@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import { 
   Settings, 
   Grid3X3, 
@@ -142,6 +143,19 @@ const Profile = () => {
   const [following, setFollowing] = useState<any[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
   const [followingLoading, setFollowingLoading] = useState(false);
+
+  // Confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean
+    user: any
+    action: 'unfollow' | null
+    onConfirm: () => void
+  }>({
+    isOpen: false,
+    user: null,
+    action: null,
+    onConfirm: () => {}
+  })
 
   // Create profile function
   const createProfile = async () => {
@@ -390,7 +404,7 @@ const Profile = () => {
     if (!session?.access_token) return;
     
     try {
-      const response = await fetch(`/api/follows/status?targetUserId=${targetUserId}`, {
+      const response = await fetch(`/api/follows/status?target_user_id=${targetUserId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -400,8 +414,8 @@ const Profile = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setFollowStatus(data.status || 'none');
-        setIsFollowing(data.isFollowing || false);
+        setFollowStatus(data.is_following ? 'following' : (data.is_pending ? 'pending' : 'none'));
+        setIsFollowing(data.is_following || false);
       } else {
         console.error('Failed to check follow status:', response.status);
         setFollowStatus('none');
@@ -451,6 +465,57 @@ const Profile = () => {
       } else {
         const errorData = await response.json();
         console.error('Failed to update follow status:', errorData);
+      }
+    } catch (error) {
+      console.error('Error updating follow status:', error);
+    }
+  };
+
+  // Handle follow/unfollow for users in stats modal
+  const handleFollowInModal = async (userId: string, isCurrentlyFollowing: boolean, user: any) => {
+    if (!session?.access_token) return;
+
+    // Show confirmation modal for unfollow actions
+    if (isCurrentlyFollowing) {
+      setConfirmationModal({
+        isOpen: true,
+        user: user,
+        action: 'unfollow',
+        onConfirm: () => performFollowAction(userId, true)
+      })
+      return
+    }
+
+    // Direct follow for new follows
+    performFollowAction(userId, false)
+  };
+
+  const performFollowAction = async (userId: string, isUnfollow: boolean) => {
+    if (!session?.access_token) return;
+
+    try {
+      const response = await fetch('/api/follows', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: isUnfollow ? 'unfollow' : 'follow',
+          followed_user_id: userId
+        }),
+      });
+
+      if (response.ok) {
+        // Refresh the followers/following lists
+        if (isFollowersModalOpen) {
+          fetchFollowers();
+        }
+        if (isFollowingModalOpen) {
+          fetchFollowing();
+        }
+        // Close confirmation modal
+        setConfirmationModal(prev => ({ ...prev, isOpen: false }))
       }
     } catch (error) {
       console.error('Error updating follow status:', error);
@@ -1029,20 +1094,18 @@ const Profile = () => {
           </DialogHeader>
           <div className="space-y-4">
             {followersLoading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                <p className="text-muted-foreground mt-2">Loading followers...</p>
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
-            ) : followers.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">No followers yet</p>
-              </div>
-            ) : (
+            ) : followers.length > 0 ? (
               followers.map((follower: any) => (
                 <div key={follower.user_id} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
+                  <div 
+                    className="flex items-center space-x-3 flex-1 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                    onClick={() => router.push(`/profile/${follower.user_id}`)}
+                  >
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={follower.profile_image_url || '/placeholder.svg'} />
+                      <AvatarImage src={follower.avatar_url || '/placeholder.svg'} />
                       <AvatarFallback>{follower.full_name?.[0] || follower.username?.[0] || 'U'}</AvatarFallback>
                     </Avatar>
                     <div>
@@ -1050,15 +1113,21 @@ const Profile = () => {
                       <p className="text-muted-foreground text-xs">@{follower.username}</p>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => router.push(`/profile/${follower.username}`)}
-                  >
-                    View
-                  </Button>
+                  {follower.user_id !== user?.id && (
+                    <Button 
+                      variant={follower.is_following ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => handleFollowInModal(follower.user_id, follower.is_following, follower)}
+                    >
+                      {follower.is_following ? "Unfollow" : "Follow"}
+                    </Button>
+                  )}
                 </div>
               ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No followers yet
+              </div>
             )}
           </div>
         </DialogContent>
@@ -1072,20 +1141,18 @@ const Profile = () => {
           </DialogHeader>
           <div className="space-y-4">
             {followingLoading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                <p className="text-muted-foreground mt-2">Loading following...</p>
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
-            ) : following.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Not following anyone yet</p>
-              </div>
-            ) : (
+            ) : following.length > 0 ? (
               following.map((followedUser: any) => (
                 <div key={followedUser.user_id} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
+                  <div 
+                    className="flex items-center space-x-3 flex-1 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                    onClick={() => router.push(`/profile/${followedUser.user_id}`)}
+                  >
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={followedUser.profile_image_url || '/placeholder.svg'} />
+                      <AvatarImage src={followedUser.avatar_url || '/placeholder.svg'} />
                       <AvatarFallback>{followedUser.full_name?.[0] || followedUser.username?.[0] || 'U'}</AvatarFallback>
                     </Avatar>
                     <div>
@@ -1094,18 +1161,35 @@ const Profile = () => {
                     </div>
                   </div>
                   <Button 
-                    variant="outline" 
+                    variant="outline"
                     size="sm"
-                    onClick={() => router.push(`/profile/${followedUser.username}`)}
+                    onClick={() => handleFollowInModal(followedUser.user_id, true, followedUser)}
                   >
-                    View
+                    Unfollow
                   </Button>
                 </div>
               ))
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                Not following anyone yet
+              </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmationModal.isOpen}
+        onClose={() => setConfirmationModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmationModal.onConfirm}
+        title="Unfollow User"
+        description="Are you sure you want to unfollow this user? You will no longer see their posts in your feed."
+        confirmText="Unfollow"
+        cancelText="Cancel"
+        variant="destructive"
+        user={confirmationModal.user}
+      />
 
       <Footer />
     </div>

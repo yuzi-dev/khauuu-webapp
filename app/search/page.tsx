@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Loader2, Search, Users, UserPlus, UserCheck, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Search, Users, UserPlus, UserCheck, Clock, CheckCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -321,66 +321,55 @@ export default function SearchUsers() {
           {/* User Cards */}
           {!loading && !error && (
             <div className="grid gap-6">
-              {users.map((user) => (
-                <Card key={user.id} className="border-0 shadow-warm bg-card/80 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                      <Avatar className="h-16 w-16 ring-2 ring-primary/20">
-                        <AvatarImage src={user.avatar} alt={user.name} />
-                        <AvatarFallback className="bg-gradient-hero text-white text-lg font-semibold">
-                          {user.name.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 
-                            className="text-xl font-semibold text-foreground truncate cursor-pointer hover:text-primary transition-colors"
-                            onClick={() => router.push(`/profile/${user.id}`)}
-                          >
-                            {user.name}
-                          </h3>
-                          {user.verified && (
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                              ✓ Verified
-                            </Badge>
+              {users.map((user: any) => (
+                    <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:shadow-md transition-shadow">
+                      <div 
+                        className="flex items-center space-x-4 flex-1 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+                        onClick={() => router.push(`/profile/${user.id}`)}
+                      >
+                        <Avatar className="w-12 h-12">
+                          <AvatarImage src={user.avatar || '/placeholder.svg'} />
+                          <AvatarFallback>{user.full_name?.[0] || user.username?.[0] || 'U'}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-lg">{user.full_name || user.username}</h3>
+                            {user.is_verified && (
+                              <Badge variant="secondary" className="text-xs">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Verified
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-muted-foreground">@{user.username}</p>
+                          {user.bio && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{user.bio}</p>
                           )}
                         </div>
-                        
-                        <p 
-                          className="text-primary font-medium mb-2 cursor-pointer hover:underline"
-                          onClick={() => router.push(`/profile/${user.id}`)}
-                        >
-                          {user.username}
-                        </p>
-                        <p className="text-muted-foreground mb-4 line-clamp-2">{user.bio}</p>
-
-                        <div className="flex items-center gap-6 text-sm text-muted-foreground mb-4">
-                          <span><strong className="text-foreground">{user.followers}</strong> followers</span>
-                          <span><strong className="text-foreground">{user.following}</strong> following</span>
-                          <span><strong className="text-foreground">{user.reviews}</strong> reviews</span>
-                        </div>
                       </div>
-
                       <FollowButton 
                         userId={user.id}
-                        variant={followedUsers.has(user.id) ? "outline" : "default"}
-                        className={
-                          followedUsers.has(user.id) 
-                            ? "border-primary text-primary hover:bg-primary/10" 
-                            : pendingUsers.has(user.id)
-                            ? "border-orange-500 text-orange-500 hover:bg-orange-50"
-                            : "bg-gradient-hero hover:opacity-90 text-white"
-                        }
-                        onFollowChange={() => {
-                          // Refresh the search results to get updated counts
-                          handleSearch()
+                        initialFollowStatus={user.is_following}
+                        user={{
+                          id: user.id,
+                          user_id: user.id,
+                          username: user.username,
+                          full_name: user.full_name,
+                          avatar_url: user.avatar
+                        }}
+                        onFollowChange={(isFollowing) => {
+                          // Update the user's follow status in the local state
+                          setUsers(prevUsers => 
+                            prevUsers.map(u => 
+                              u.id === user.id 
+                                ? { ...u, is_following: isFollowing }
+                                : u
+                            )
+                          );
                         }}
                       />
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  ))}
             </div>
           )}
 
